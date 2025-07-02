@@ -1,21 +1,21 @@
 include:
-  - project: $CATALOG_PATH
-    file:
-      - kaniko-ci.yml
+  - project: "cloud-pi-native/gitlab-ci-catalog"
     ref: main
+    file: "kaniko-ci.yml"
 
 variables:
   TAG: "${CI_COMMIT_REF_SLUG}"
-  DOCKERFILE: Dockerfile
   IMAGE_NAME: "$CI_REGISTRY_IMAGE:$TAG"
+  DOCKERFILE: Dockerfile
   REGISTRY_URL: "$CI_REGISTRY"
 
 stages:
-  - docker-build
+  - build
 
 docker-build:
-  stage: docker-build
+  stage: build
   extends:
     - .kaniko:build-push
   variables:
-    WORKING_DIR: "."
+    WORKING_DIR: "."  # ou le dossier contenant ton Dockerfile
+

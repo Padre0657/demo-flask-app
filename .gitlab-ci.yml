@@ -1,16 +1,18 @@
-include:
-  - local: '.gitlab/kaniko-templates.yml'
-
 stages:
   - build
 
 build-image:
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
   stage: build
-  extends: .kaniko:build-push
-  variables:
-    IMAGE_NAMES: my-app:$CI_COMMIT_SHORT_SHA
-    IMAGE_REPOSITORY: gcr.io/ton-projet-gcp
-    EXTRA_BUILD_ARGS: "--build-arg SOME_VAR=somevalue"
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "$DOCKER_AUTH" > /kaniko/.docker/config.json
+    - /kaniko/executor
+      --context $CI_PROJECT_DIR
+      --dockerfile $CI_PROJECT_DIR/Dockerfile
+      --destination gcr.io/ton-projet-gcp/my-app:$CI_COMMIT_SHORT_SHA
+      --single-snapshot
   only:
     - main
-

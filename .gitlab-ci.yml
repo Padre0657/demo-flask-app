@@ -1,20 +1,16 @@
-default:
-  image: alpine:latest
+include:
+  - local: '.gitlab/kaniko-templates.yml'
 
 stages:
   - build
 
-docker-build:
+build-image:
   stage: build
-  image: registry.gitlab.com/gitlab-org/cluster-integration/kaniko-project/executor:debug
-  script:
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor --context "${CI_PROJECT_DIR}" --dockerfile "${DOCKERFILE}" --destination "${IMAGE_NAME}"
+  extends: .kaniko:build-push
+  variables:
+    IMAGE_NAMES: my-app:$CI_COMMIT_SHORT_SHA
+    IMAGE_REPOSITORY: gcr.io/ton-projet-gcp
+    EXTRA_BUILD_ARGS: "--build-arg SOME_VAR=somevalue"
   only:
     - main
 
-variables:
-  TAG: "${CI_COMMIT_REF_SLUG}"
-  IMAGE_NAME: "$CI_REGISTRY_IMAGE:${TAG}"
-  DOCKERFILE: Dockerfile
-  REGISTRY_URL: "$CI_REGISTRY"

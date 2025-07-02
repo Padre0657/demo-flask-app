@@ -4,8 +4,9 @@ include:
     file: "kaniko-ci.yml"
 
 variables:
+  # Utilisé comme tag d'image : "main", "feature-x", etc.
   TAG: "${CI_COMMIT_REF_SLUG}"
-  IMAGE_NAME: "$CI_REGISTRY_IMAGE:$TAG"
+  IMAGE_NAME: "$CI_REGISTRY_IMAGE:${TAG}"
   DOCKERFILE: Dockerfile
   REGISTRY_URL: "$CI_REGISTRY"
 
@@ -17,5 +18,4 @@ docker-build:
   extends:
     - .kaniko:build-push
   variables:
-    WORKING_DIR: "."  # ou le dossier contenant ton Dockerfile
-
+    WORKING_DIR: "."  # Chemin où se trouve ton Dockerfile (à la racine du dépôt app)

@@ -1,0 +1,72 @@
+include:
+  - local: "/includes/rules.yml"
+  - local: "/includes/node.yml"
+  - project: $CATALOG_PATH
+    file: vault-ci.yml
+    ref: main
+  - project: $CATALOG_PATH
+    file: sonar-ci.yml
+    ref: main
+  - project: $CATALOG_PATH
+    file: kaniko-ci.yml
+    ref: main
+
+default:
+  image: alpine:latest
+
+cache:
+  paths:
+    - ./node_modules/
+
+variables:
+  TAG: "${CI_COMMIT_REF_SLUG}"
+  DOCKERFILE: Dockerfile
+  REGISTRY_URL: "${REGISTRY_HOST}/${PROJECT_PATH}"
+
+stages:
+  - read-secret
+  - quality-app
+  - package-app
+  - docker-build
+
+read_secret:
+  stage: read-secret
+  extends:
+    - .vault:read_secret
+
+quality-app:
+  stage: quality-app
+  variables:
+    WORKING_DIR: "."
+  extends:
+    - .sonar:sonar-scanner
+  allow_failure: true
+
+package-app:
+  stage: package-app
+  image: node:20
+  variables:
+    WORKING_DIR: "."
+    NODE_OPTIONS: --openssl-legacy-provider
+  script:
+    - cd $WORKING_DIR
+    - yarn install --frozen-lockfile
+    - yarn build
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - ./node_modules/
+  artifacts:
+    paths:
+      - ./build/
+    expire_in: 1 hour
+
+docker-build:
+  stage: docker-build
+  variables:
+    WORKING_DIR: "."
+    EXTRA_BUILD_ARGS: --force
+    IMAGE_NAME: "boardgenerator-ui"
+  extends:
+    - .kaniko:simple-build-push
+

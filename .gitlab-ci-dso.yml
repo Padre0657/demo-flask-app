@@ -1,72 +1,35 @@
-include:
-  - local: "/includes/rules.yml"
-  - local: "/includes/node.yml"
-  - project: $CATALOG_PATH
-    file: vault-ci.yml
-    ref: main
-  - project: $CATALOG_PATH
-    file: sonar-ci.yml
-    ref: main
-  - project: $CATALOG_PATH
-    file: kaniko-ci.yml
-    ref: main
-
-default:
-  image: alpine:latest
-
-cache:
-  paths:
-    - ./node_modules/
-
 variables:
-  TAG: "${CI_COMMIT_REF_SLUG}"
-  DOCKERFILE: Dockerfile
-  REGISTRY_URL: "${REGISTRY_HOST}/${PROJECT_PATH}"
+  DOCKER_BUILDKIT: 1
 
-stages:
-  - read-secret
-  - quality-app
-  - package-app
-  - docker-build
+.base:
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - apk add --update curl && rm -rf /var/cache/apk/*
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]]; then
+        tag=""
+        echo "Running on default branch '$CI_DEFAULT_BRANCH': tag = latest"
+        echo "JOB-TOKEN: $CI_JOB_TOKEN"
+      else
+        tag="-$CI_COMMIT_REF_SLUG"
+        echo "Running on branch '$CI_COMMIT_BRANCH': tag = $tag"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      exists:
+        - Dockerfile
 
-read_secret:
-  stage: read-secret
-  extends:
-    - .vault:read_secret
-
-quality-app:
-  stage: quality-app
-  variables:
-    WORKING_DIR: "."
-  extends:
-    - .sonar:sonar-scanner
-  allow_failure: true
-
-package-app:
-  stage: package-app
-  image: node:20
-  variables:
-    WORKING_DIR: "."
-    NODE_OPTIONS: --openssl-legacy-provider
+build:
+  extends: .base
+  stage: build
   script:
-    - cd $WORKING_DIR
-    - yarn install --frozen-lockfile
-    - yarn build
-  cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    paths:
-      - ./node_modules/
-  artifacts:
-    paths:
-      - ./build/
-    expire_in: 1 hour
-
-docker-build:
-  stage: docker-build
-  variables:
-    WORKING_DIR: "."
-    EXTRA_BUILD_ARGS: --force
-    IMAGE_NAME: "boardgenerator-ui"
-  extends:
-    - .kaniko:simple-build-push
+    - VERSION=$(cat ./version)
+    - echo $VERSION
+    - docker build --platform linux/amd64 --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from "$CI_REGISTRY_IMAGE:${VERSION}${tag}" -t "$CI_REGISTRY_IMAGE:${VERSION}${tag}" .
+    - docker push "$CI_REGISTRY_IMAGE:${VERSION}${tag}"
+    - docker save "$CI_REGISTRY_IMAGE:${VERSION}${tag}" | gzip > "boardgenerator:${VERSION}${tag}.tar.gz"
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file boardgenerator:${VERSION}${tag}.tar.gz "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/boardgenerator/${VERSION}${tag}/boardgenerator.${VERSION}${tag}.tar.gz"'
 

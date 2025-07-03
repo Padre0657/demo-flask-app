@@ -1,10 +1,10 @@
-default:
-  script: []
-
 stages:
   - build
 
-build-image:
+variables:
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+
+build:
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -12,10 +12,9 @@ build-image:
   script:
     - mkdir -p /kaniko/.docker
     - echo "$DOCKER_AUTH" > /kaniko/.docker/config.json
-    - /kaniko/executor
-      --context $CI_PROJECT_DIR
-      --dockerfile $CI_PROJECT_DIR/Dockerfile
-      --destination gcr.io/ton-projet-gcp/my-app:$CI_COMMIT_SHORT_SHA
-      --single-snapshot
+    - /kaniko/executor \
+        --context "${CI_PROJECT_DIR}" \
+        --dockerfile "${CI_PROJECT_DIR}/Dockerfile" \
+        --destination "$DOCKER_IMAGE"
   only:
     - main

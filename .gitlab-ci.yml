@@ -1,29 +1,35 @@
-stages:
-  - build
-
 variables:
-  DOCKER_IMAGE: "$CI_REGISTRY_IMAGE:$(cat version)${CI_COMMIT_BRANCH == CI_DEFAULT_BRANCH && '' || '-$CI_COMMIT_REF_SLUG'}"
-  TAR_NAME: "boardgenerator:$(cat version)${CI_COMMIT_BRANCH == CI_DEFAULT_BRANCH && '' || '-$CI_COMMIT_REF_SLUG'}.tar.gz"
-  DOCKER_AUTH: '{"auths":{"$CI_REGISTRY":{"username":"$CI_REGISTRY_USER","password":"$CI_REGISTRY_PASSWORD"}}}'
+  DOCKER_BUILDKIT: 1
+
+.base:
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - apk add --update curl && rm -rf /var/cache/apk/*
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]]; then
+        tag=""
+        echo "Running on default branch '$CI_DEFAULT_BRANCH': tag = latest"
+        echo "JOB-TOKEN: $CI_JOB_TOKEN"
+      else
+        tag="-$CI_COMMIT_REF_SLUG"
+        echo "Running on branch '$CI_COMMIT_BRANCH': tag = $tag"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      exists:
+        - Dockerfile
 
 build:
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
+  extends: .base
   stage: build
   script:
-    - mkdir -p /kaniko/.docker
-    - echo "$DOCKER_AUTH" | envsubst > /kaniko/.docker/config.json
     - VERSION=$(cat ./version)
-    - if [[ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]]; then TAG=""; else TAG="-$CI_COMMIT_REF_SLUG"; fi
-    - IMAGE_TAG="$CI_REGISTRY_IMAGE:$VERSION$TAG"
-    - /kaniko/executor \
-        --context "$CI_PROJECT_DIR" \
-        --dockerfile "$CI_PROJECT_DIR/Dockerfile" \
-        --destination "$IMAGE_TAG"
-  - echo "Saving image to tar.gz for upload..."
-    - skopeo copy docker://$IMAGE_TAG docker-archive:$CI_PROJECT_DIR/$TAR_NAME
-    - gzip $CI_PROJECT_DIR/$TAR_NAME
-    - curl --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-           --upload-file "$TAR_NAME.gz" \
-           "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/boardgenerator/${VERSION}${TAG}/boardgenerator.${VERSION}${TAG}.tar.gz"
+    - echo $VERSION
+    - docker build --platform linux/amd64 --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from "$CI_REGISTRY_IMAGE:${VERSION}${tag}" -t "$CI_REGISTRY_IMAGE:${VERSION}${tag}" .
+    - docker push "$CI_REGISTRY_IMAGE:${VERSION}${tag}"
+    - docker save "$CI_REGISTRY_IMAGE:${VERSION}${tag}" | gzip > "boardgenerator:${VERSION}${tag}.tar.gz"
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file boardgenerator:${VERSION}${tag}.tar.gz "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/boardgenerator/${VERSION}${tag}/boardgenerator.${VERSION}${tag}.tar.gz"'
+

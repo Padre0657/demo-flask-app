@@ -3,8 +3,6 @@ include:
     file:
       - vault-ci.yml
       - kaniko-ci.yml
-      - java-mvn.yml
-      - node-npm.yml
     ref: main
 
 variables:
